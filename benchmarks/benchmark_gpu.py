@@ -1,5 +1,5 @@
 """
-GPU vs CPU Benchmark for AI Earth Models
+GPU vs CPU Benchmark for OpenEnergy Engine
 
 Measures inference throughput for:
 - OlmoEarth detection model
@@ -180,7 +180,7 @@ def benchmark_valuation(batch_size: int, runs: int = 10):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="AI Earth Models GPU Benchmark")
+    parser = argparse.ArgumentParser(description="OpenEnergy Engine GPU Benchmark")
     parser.add_argument("--device", default="cpu", choices=["cpu", "cuda"])
     parser.add_argument("--batch-size", type=int, default=8)
     parser.add_argument("--amp", action="store_true", help="Use mixed precision (AMP)")

@@ -1,7 +1,9 @@
-# AI Earth Models
+# OpenEnergy Engine
 
 **AI-Powered Earth Observation for Renewable Energy Verification and NEMS-Based Valuation**
 
+> OpenEnergy Ledger & EO-AI Verification Engine
+>
 > Millennium Fellowship Research | Northeastern University
 >
 > NCAR/NLR/NOAA Open Hackathon 2026 -- Team eleveno
@@ -67,7 +69,7 @@ Requires NVIDIA GPU with 16GB+ VRAM and CUDA 11.8+.
 ## Architecture
 
 ```
-ai-earth-models/
+openenergy-engine/
 ├── src/                           # Core business logic
 │   ├── models/
 │   │   ├── olmo_earth.py         # Vision transformer (Sentinel-2, 12 bands)

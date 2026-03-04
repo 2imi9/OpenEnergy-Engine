@@ -1,5 +1,5 @@
 """
-MCP Tool Definitions for AI Earth Models
+MCP Tool Definitions for OpenEnergy Engine
 
 Defines tools for:
 - Renewable energy detection from satellite imagery

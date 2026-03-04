@@ -1,5 +1,5 @@
 """
-LLM Integration Module for AI Earth Models
+LLM Integration Module for OpenEnergy Engine
 
 Provides LLM inference via NVIDIA NIM (cloud) or local vLLM for:
 - Natural language queries about assets and climate data

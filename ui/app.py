@@ -1,4 +1,4 @@
-"""AI Earth Models — Streamlit entry point."""
+"""OpenEnergy Engine — Streamlit entry point."""
 
 import sys
 from pathlib import Path
@@ -19,7 +19,7 @@ from ui.utils.state import init_state
 from ui.components.sidebar import render_sidebar
 
 st.set_page_config(
-    page_title="AI Earth Models",
+    page_title="OpenEnergy Engine",
     page_icon="🌎",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -29,7 +29,7 @@ init_state()
 render_sidebar()
 
 # Landing page
-st.title("AI Earth Models")
+st.title("OpenEnergy Engine")
 st.markdown(
     """
     **AI-powered Earth observation for renewable energy verification and NEMS-based valuation.**

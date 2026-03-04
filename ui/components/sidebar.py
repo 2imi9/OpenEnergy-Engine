@@ -23,7 +23,7 @@ def render_sidebar():
     """Render the shared sidebar with location picker and status."""
     init_state()
 
-    st.sidebar.title("AI Earth Models")
+    st.sidebar.title("OpenEnergy Engine")
     st.sidebar.caption("Renewable Energy Verification & Valuation")
     st.sidebar.divider()
 

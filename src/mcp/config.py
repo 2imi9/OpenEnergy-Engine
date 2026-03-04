@@ -1,5 +1,5 @@
 """
-MCP Server Configuration for AI Earth Models
+MCP Server Configuration for OpenEnergy Engine
 
 Configuration for the Model Context Protocol server that exposes
 renewable energy analysis tools.
@@ -23,7 +23,7 @@ class MCPConfig:
     """
 
     # Server settings
-    name: str = "ai-earth-models"
+    name: str = "openenergy-engine"
     version: str = "0.1.0"
     port: int = 3000
     host: str = "localhost"
@@ -72,7 +72,7 @@ class MCPConfig:
             return val.lower() in ("true", "1", "yes")
 
         return cls(
-            name=os.environ.get("MCP_NAME", "ai-earth-models"),
+            name=os.environ.get("MCP_NAME", "openenergy-engine"),
             port=int(os.environ.get("MCP_PORT", "3000")),
             host=os.environ.get("MCP_HOST", "localhost"),
             enable_detection_tools=parse_bool(os.environ.get("MCP_ENABLE_DETECTION", "true")),

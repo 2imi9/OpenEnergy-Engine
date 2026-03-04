@@ -1,1 +1,1 @@
-"""FastAPI backend for AI Earth Models."""
+"""FastAPI backend for OpenEnergy Engine."""

@@ -1,4 +1,4 @@
-# AI Earth Models - Python Dependencies
+# OpenEnergy Engine - Python Dependencies
 # Project: Earth Observation for Renewable Energy Verification & Valuation
 
 # ==============================================================================

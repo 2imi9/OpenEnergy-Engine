@@ -1,4 +1,4 @@
-# AI Earth Models - Renewable Energy Verification & Valuation
+# OpenEnergy Engine - Renewable Energy Verification & Valuation
 """
 AI-powered Earth observation for renewable energy infrastructure
 verification and NEMS-based valuation.

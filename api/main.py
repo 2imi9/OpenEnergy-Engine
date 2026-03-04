@@ -1,4 +1,4 @@
-"""FastAPI application for AI Earth Models."""
+"""FastAPI application for OpenEnergy Engine."""
 
 import logging
 from contextlib import asynccontextmanager
@@ -33,7 +33,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="AI Earth Models API",
+    title="OpenEnergy Engine API",
     version="0.1.0",
     description="Renewable energy detection, climate risk, and valuation API",
     lifespan=lifespan,

@@ -1,5 +1,5 @@
 """
-vLLM Client for AI Earth Models
+vLLM Client for OpenEnergy Engine
 
 Provides local LLM inference using vLLM for:
 - Natural language queries about assets and climate data

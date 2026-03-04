@@ -1,5 +1,5 @@
 """
-MCP Server Module for AI Earth Models
+MCP Server Module for OpenEnergy Engine
 
 Model Context Protocol server exposing renewable energy analysis tools:
 - Satellite detection of solar/wind installations

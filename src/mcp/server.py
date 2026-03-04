@@ -1,5 +1,5 @@
 """
-MCP Server for AI Earth Models
+MCP Server for OpenEnergy Engine
 
 Model Context Protocol server exposing renewable energy analysis tools:
 - Satellite detection of solar/wind installations
@@ -44,7 +44,7 @@ except ImportError:
 
 class MCPServer:
     """
-    MCP Server for AI Earth Models.
+    MCP Server for OpenEnergy Engine.
 
     Exposes renewable energy analysis tools via the Model Context Protocol.
 
@@ -271,7 +271,7 @@ def main():
     """CLI entry point for MCP server."""
     import argparse
 
-    parser = argparse.ArgumentParser(description="AI Earth Models MCP Server")
+    parser = argparse.ArgumentParser(description="OpenEnergy Engine MCP Server")
     parser.add_argument("--port", type=int, default=3000, help="Server port")
     parser.add_argument("--host", type=str, default="localhost", help="Server host")
     parser.add_argument("--no-llm", action="store_true", help="Disable LLM features")

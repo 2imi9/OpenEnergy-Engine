@@ -1,5 +1,5 @@
 """
-vLLM Configuration for AI Earth Models
+vLLM Configuration for OpenEnergy Engine
 
 Provides configuration for local LLM inference using vLLM.
 

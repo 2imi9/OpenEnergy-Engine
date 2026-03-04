@@ -1,4 +1,4 @@
-# CLAUDE.md - AI Earth Models
+# CLAUDE.md - OpenEnergy Engine
 
 ## Project Overview
 
@@ -39,7 +39,7 @@ streamlit run ui/app.py
 ## Architecture
 
 ```
-ai-earth-models/
+openenergy-engine/
 ├── src/                          # Core business logic
 │   ├── models/
 │   │   ├── olmo_earth.py        # Vision transformer for renewable energy detection
