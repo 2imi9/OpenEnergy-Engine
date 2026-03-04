@@ -1,0 +1,21 @@
+# GPU override — use with:
+#   docker compose -f docker-compose.yml -f docker-compose.gpu.yml up
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.gpu
+    environment:
+      - EIA_API_KEY=${EIA_API_KEY:-}
+      - PLANETARY_COMPUTER_KEY=${PLANETARY_COMPUTER_KEY:-}
+      - MCP_ENABLE_LLM=true
+      - VLLM_MODEL=${VLLM_MODEL:-Qwen/Qwen3-8B}
+      - VLLM_GPU_MEMORY=${VLLM_GPU_MEMORY:-0.9}
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
