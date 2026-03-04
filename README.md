@@ -187,6 +187,26 @@ Register for a free API key: https://www.eia.gov/opendata/register.php
 
 ---
 
+## Real vs Mock Data
+
+The platform gracefully degrades when optional dependencies are missing. This table shows what runs with real data and what falls back to mock/synthetic:
+
+| Component | Real | Mock Fallback | What Triggers Real |
+|-----------|------|---------------|-------------------|
+| **OlmoEarth backbone** | Pretrained weights from Allen Institute (LatentMIM, 3.5M–1.4B params) | Custom ViT (randomly initialized, same API) | `olmoearth_pretrain` installed |
+| **Satellite imagery** | Sentinel-2 L2A from Microsoft Planetary Computer (10m, 12 bands) | Synthetic spectral arrays with realistic band ranges | `planetary-computer`, `pystac-client`, `rasterio`, `shapely` installed |
+| **EIA data** | Live EIA API v2 (860/923 generator inventory, AEO price forecasts) | Returns error (no mock) | `EIA_API_KEY` env var set |
+| **LLM analysis** | NVIDIA NIM cloud or local vLLM inference | Placeholder template responses | `NVIDIA_API_KEY` or GPU + `vllm` |
+| **Climate risk model** | Always runs (pure PyTorch) | — | Weights are randomly initialized; architecture is real but not yet trained on climate data |
+| **Valuation engine** | Always runs (pure Python math) | — | NPV/IRR/LCOE calculations are fully functional |
+| **Task heads** (detection, classification, capacity, segmentation) | Architecture is real | — | Weights are randomly initialized; require fine-tuning on labeled renewable energy data |
+
+**Docker (CPU)** uses mock satellite + fallback ViT backbone. **Local with GPU** uses real OlmoEarth + real satellite imagery when geo deps are installed.
+
+> **Note:** The climate model and task heads produce structurally valid outputs but with random weights. Classification outputs will appear near-uniform until fine-tuned on labeled data.
+
+---
+
 ## REST API
 
 | Endpoint | Method | Description |
