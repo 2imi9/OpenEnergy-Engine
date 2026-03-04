@@ -31,7 +31,7 @@ logger = logging.getLogger(__name__)
 try:
     from olmoearth_pretrain.model_loader import ModelID, load_model_from_id
     from olmoearth_pretrain.datatypes import MaskedOlmoEarthSample, MaskValue
-    from olmoearth_pretrain.data.normalize import Normalizer, Strategy
+    from olmoearth_pretrain.data.constants import Modality as OlmoModality
     HAS_OLMOEARTH = True
 except ImportError:
     HAS_OLMOEARTH = False
@@ -306,10 +306,14 @@ class OlmoEarthRealBackbone(nn.Module):
 
     Same forward(x, return_all_tokens) interface as OlmoEarthBackbone
     so RenewableEnergyDetector can use either interchangeably.
+
+    The real OlmoEarth model expects MaskedOlmoEarthSample with Sentinel-2 L2A
+    data in [B, H, W, T, 12] format (12 spectral bands). This wrapper converts
+    our (B, C, H, W) input to that format, keeping everything on GPU.
     """
 
-    # Output dim per model size
-    DIM_MAP = {"nano": 192, "tiny": 384, "base": 768, "large": 1024}
+    # Output dim per model size (from OlmoEarth architecture)
+    DIM_MAP = {"nano": 128, "tiny": 384, "base": 768, "large": 1024}
     MODEL_ID_MAP = {
         "nano": "OLMOEARTH_V1_NANO",
         "tiny": "OLMOEARTH_V1_TINY",
@@ -318,6 +322,10 @@ class OlmoEarthRealBackbone(nn.Module):
         "large": "OLMOEARTH_V1_LARGE",
         "1.4b": "OLMOEARTH_V1_LARGE",
     }
+    # OlmoEarth S2 band order: B02,B03,B04,B08, B05,B06,B07,B8A,B11,B12, B01,B09
+    # Our pipeline band order: B02,B03,B04,B05,B06,B07,B08,B8A,B11,B12,SCL,CLD
+    # Mapping: our[0,1,2,6,3,4,5,7,8,9] → OlmoEarth[0..9], pad zeros for B01,B09
+    _OUR_TO_OLMO_INDICES = [0, 1, 2, 6, 3, 4, 5, 7, 8, 9]
 
     def __init__(self, config: ModelConfig):
         super().__init__()
@@ -325,46 +333,72 @@ class OlmoEarthRealBackbone(nn.Module):
 
         model_id_name = self.MODEL_ID_MAP.get(config.model_size, "OLMOEARTH_V1_BASE")
         model_id = getattr(ModelID, model_id_name)
-        self.encoder_model = load_model_from_id(model_id)
-        self.encoder_model.eval()
-        self.normalizer = Normalizer(Strategy.COMPUTED)
+        logger.info(f"Loading OlmoEarth pretrained: {model_id.value}")
+        self.full_model = load_model_from_id(model_id)
+        self.full_model.eval()
+
+        # Get actual output dim from the loaded model
+        real_dim = self.DIM_MAP.get(config.model_size, 768)
+
+        # Number of S2 band sets (for mask)
+        self._s2_num_band_sets = OlmoModality.SENTINEL2_L2A.num_band_sets  # 3
+        self._s2_num_bands = len(OlmoModality.SENTINEL2_L2A.band_order)    # 12
 
         # Project if real dim != config.hidden_dim
-        real_dim = self.DIM_MAP.get(config.model_size, 768)
         if real_dim != config.hidden_dim:
             self.projection = nn.Linear(real_dim, config.hidden_dim)
         else:
             self.projection = nn.Identity()
 
         if config.freeze_backbone:
-            for p in self.encoder_model.parameters():
+            for p in self.full_model.parameters():
                 p.requires_grad = False
 
-    def _prepare_sample(self, x: torch.Tensor):
-        """Convert (B, C, H, W) → MaskedOlmoEarthSample."""
+    def _prepare_sample(self, x: torch.Tensor) -> MaskedOlmoEarthSample:
+        """Convert (B, C, H, W) → MaskedOlmoEarthSample entirely on GPU."""
         B, C, H, W = x.shape
         device = x.device
 
-        # Resize to 64x64 if needed (OlmoEarth minimum)
+        # Resize to 64×64 (OlmoEarth native resolution)
         if H != 64 or W != 64:
             x = F.interpolate(x, size=(64, 64), mode="bilinear", align_corners=False)
             H, W = 64, 64
 
-        # BCHW → BHWC for normalizer
-        x_np = x.detach().cpu().float().numpy().transpose(0, 2, 3, 1)
-        for i in range(B):
-            x_np[i] = self.normalizer.normalize("sentinel2_l2a", x_np[i])
-        x_norm = torch.from_numpy(x_np).to(device).float()
+        # Reorder our 12 channels to OlmoEarth's 12-band S2 order
+        # Our: B02,B03,B04,B05,B06,B07,B08,B8A,B11,B12,SCL,CLD
+        # OlmoEarth: B02,B03,B04,B08,B05,B06,B07,B8A,B11,B12,B01,B09
+        if C >= 10:
+            # Take first 10 spectral bands, reorder, pad B01/B09 with zeros
+            reordered = x[:, self._OUR_TO_OLMO_INDICES]  # (B, 10, H, W)
+            pad = torch.zeros(B, 2, H, W, device=device, dtype=x.dtype)
+            x_s2 = torch.cat([reordered, pad], dim=1)  # (B, 12, H, W)
+        else:
+            # Fewer channels — pad to 12
+            pad = torch.zeros(B, self._s2_num_bands - C, H, W, device=device, dtype=x.dtype)
+            x_s2 = torch.cat([x, pad], dim=1)
 
-        # Add time dim: (B, H, W, C) → (B, H, W, 1, C)
-        x_bhwtc = x_norm.unsqueeze(3)
-        mask = torch.ones(B, H, W, 1, 3, device=device) * MaskValue.ONLINE_ENCODER.value
-        timestamps = torch.tensor([[[15, 6, 2024]]], device=device).expand(B, -1, -1).float()
+        # BCHW → BHWTC: (B, 12, 64, 64) → (B, 64, 64, 1, 12)
+        x_bhwc = x_s2.permute(0, 2, 3, 1)  # (B, H, W, C)
+        x_bhwtc = x_bhwc.unsqueeze(3)       # (B, H, W, 1, C)
+
+        # Mask: all tokens visible to encoder → 0 (ONLINE_ENCODER)
+        mask = torch.full(
+            (B, H, W, 1, self._s2_num_band_sets),
+            MaskValue.ONLINE_ENCODER.value,
+            device=device, dtype=x.dtype,
+        )
+        # Mark B01/B09 band set (set 2) as MISSING since we don't have those bands
+        mask[:, :, :, :, 2] = MaskValue.MISSING.value
+
+        # Timestamps as int32 (required for month embedding lookup)
+        timestamps = torch.tensor(
+            [[[15, 6, 2024]]], dtype=torch.int32, device=device
+        ).expand(B, -1, -1)
 
         return MaskedOlmoEarthSample(
+            timestamps=timestamps,
             sentinel2_l2a=x_bhwtc,
             sentinel2_l2a_mask=mask,
-            timestamps=timestamps,
         )
 
     def forward(
@@ -375,9 +409,10 @@ class OlmoEarthRealBackbone(nn.Module):
         sample = self._prepare_sample(x)
         ctx = torch.no_grad() if self.config.freeze_backbone else nullcontext()
         with ctx:
-            output = self.encoder_model.encoder(sample, fast_pass=True, patch_size=4)
+            output = self.full_model.encoder(sample, patch_size=8)
 
-        features = output["tokens_and_masks"].sentinel2_l2a  # (B, H', W', T, S, D)
+        # tokens shape: (B, H', W', T, S, D) where S = num_band_sets
+        features = output["tokens_and_masks"].sentinel2_l2a
         B = features.shape[0]
         D = features.shape[-1]
 
@@ -475,11 +510,11 @@ class SegmentationHead(nn.Module):
             (B, C, H, W) segmentation logits
         """
         B, N, D = patch_tokens.shape
-        
-        # Reshape to spatial
-        H = W = self.num_patches_side
+
+        # Infer spatial grid size from token count
+        H = W = int(N ** 0.5)
         x = patch_tokens.transpose(1, 2).view(B, D, H, W)
-        
+
         # Decode
         return self.decoder(x)
 

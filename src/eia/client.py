@@ -229,25 +229,25 @@ class EIAClient:
         self,
         state: Optional[str] = None,
         energy_source: Optional[str] = None,
-        status: str = "operating",
+        status: str = "OP",
         min_capacity_mw: float = 1.0,
         year: Optional[int] = None
     ) -> pd.DataFrame:
         """
         Get operating generator inventory from EIA-860.
-        
+
         Args:
             state: Two-letter state code (e.g., "CA")
             energy_source: Energy source code ("SUN", "WND", etc.)
-            status: Generator status
+            status: Generator status code ("OP"=operating, "SB"=standby)
             min_capacity_mw: Minimum capacity filter
             year: Data year
-            
+
         Returns:
             DataFrame with generator data
         """
         route = "electricity/operating-generator-capacity/data"
-        
+
         facets = {}
         if state:
             facets["stateid"] = [state]
@@ -255,9 +255,9 @@ class EIAClient:
             facets["energy_source_code"] = [energy_source]
         if status:
             facets["status"] = [status]
-            
+
         params = {
-            "frequency": "annual",
+            "frequency": "monthly",
             "data[0]": "nameplate-capacity-mw",
             "data[1]": "net-summer-capacity-mw",
             "data[2]": "latitude",
@@ -266,7 +266,7 @@ class EIAClient:
             "sort[0][direction]": "desc",
             "length": self.config.max_rows
         }
-        
+
         if year:
             params["start"] = f"{year}-01"
             params["end"] = f"{year}-12"
@@ -314,9 +314,9 @@ class EIAClient:
     def get_plant_details(self, plant_id: Union[str, int]) -> Dict:
         """Get detailed information for a specific plant."""
         route = "electricity/operating-generator-capacity/data"
-        
+
         params = {
-            "frequency": "annual",
+            "frequency": "monthly",
             "data[0]": "nameplate-capacity-mw",
             "data[1]": "net-summer-capacity-mw",
             "data[2]": "latitude",
@@ -433,7 +433,7 @@ class EIAClient:
         Returns:
             DataFrame with projections
         """
-        route = "aeo/data"
+        route = "aeo/2025/data"
         
         params = {
             "frequency": "annual",
@@ -472,7 +472,7 @@ class EIAClient:
         Returns:
             DataFrame with price projections (cents/kWh)
         """
-        route = "aeo/data"
+        route = "aeo/2025/data"
         
         params = {
             "frequency": "annual",
@@ -510,7 +510,7 @@ class EIAClient:
         Returns:
             DataFrame with capacity projections (GW)
         """
-        route = "aeo/data"
+        route = "aeo/2025/data"
         
         # Map to AEO series IDs
         series_map = {

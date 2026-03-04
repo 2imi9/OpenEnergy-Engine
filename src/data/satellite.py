@@ -24,7 +24,9 @@ try:
     import planetary_computer
     import pystac_client
     import rasterio
-    from rasterio.mask import mask
+    from rasterio.mask import mask as rio_mask
+    from rasterio.windows import from_bounds
+    from rasterio.warp import transform_bounds
     from shapely.geometry import box
     HAS_GEO_DEPS = True
 except ImportError:
@@ -124,30 +126,52 @@ class SatelliteClient:
         self,
         item,
         bbox: List[float],
-        bands: List[str]
+        bands: List[str],
+        target_size: Optional[int] = None,
     ) -> Tuple[Optional[np.ndarray], List[str]]:
-        """Load bands from STAC item."""
+        """Load bands from STAC item, handling CRS transformation.
+
+        All bands are resampled to the same pixel dimensions so they can
+        be stacked even when native resolutions differ (10m vs 20m).
+        """
         chip_data = []
         loaded_bands = []
-        
+        ref_shape = None
+
         for band in bands:
             if band not in item.assets:
                 continue
-            
+
             href = item.assets[band].href
             try:
                 with rasterio.open(href) as src:
-                    geom = box(*bbox)
-                    out_image, _ = mask(src, [geom], crop=True, filled=True)
-                    chip_data.append(out_image[0])
+                    # Transform bbox from EPSG:4326 to raster CRS
+                    raster_bbox = transform_bounds(
+                        "EPSG:4326", src.crs, *bbox
+                    )
+                    window = from_bounds(*raster_bbox, transform=src.transform)
+                    out_image = src.read(1, window=window)
+
+                    # Use first band's shape as reference, resize others to match
+                    if ref_shape is None:
+                        ref_shape = out_image.shape
+                    elif out_image.shape != ref_shape:
+                        from PIL import Image
+                        out_image = np.array(
+                            Image.fromarray(out_image).resize(
+                                (ref_shape[1], ref_shape[0]), Image.BILINEAR
+                            )
+                        )
+
+                    chip_data.append(out_image)
                     loaded_bands.append(band)
             except Exception as e:
                 logger.warning(f"Error loading band {band}: {e}")
                 continue
-        
+
         if not chip_data:
             return None, []
-        
+
         return np.stack(chip_data, axis=0), loaded_bands
     
     def get_sentinel2_chip(
