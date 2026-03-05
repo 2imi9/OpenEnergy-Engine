@@ -144,7 +144,7 @@ class EarthModelsAPI:
         except Exception:
             return None
 
-    def llm_chat(self, messages: list[dict], max_tokens: int = 8192, temperature: float = 1.0, enable_tools: bool = True) -> dict | None:
+    def llm_chat(self, messages: list[dict], max_tokens: int = 8192, temperature: float = 1.0, enable_tools: bool = True, provider: str = "auto") -> dict | None:
         try:
             r = self.session.post(
                 f"{self.base_url}/llm/chat",
@@ -153,6 +153,7 @@ class EarthModelsAPI:
                     "max_tokens": max_tokens,
                     "temperature": temperature,
                     "enable_tools": enable_tools,
+                    "provider": provider,
                 },
                 timeout=300,
             )
@@ -162,11 +163,11 @@ class EarthModelsAPI:
             st.error(f"LLM chat failed: {e}")
             return None
 
-    def llm_analyze(self, analysis_type: str = "general", question: str = "", context: dict = None) -> dict | None:
+    def llm_analyze(self, analysis_type: str = "general", question: str = "", context: dict = None, provider: str = "auto") -> dict | None:
         try:
             r = self.session.post(
                 f"{self.base_url}/llm/analyze",
-                json={"analysis_type": analysis_type, "question": question, "context": context},
+                json={"analysis_type": analysis_type, "question": question, "context": context, "provider": provider},
                 timeout=300,
             )
             r.raise_for_status()

@@ -1,4 +1,4 @@
-"""AI Chat — interactive chat powered by NVIDIA NIM with tool calling."""
+"""AI Chat — interactive chat with selectable LLM provider."""
 
 import sys
 from pathlib import Path
@@ -15,21 +15,45 @@ init_state()
 render_sidebar()
 
 st.header("AI Chat")
-st.caption("Renewable energy analysis assistant powered by NVIDIA NIM")
+st.caption("Renewable energy analysis assistant")
 
 api = get_api_client()
 
-# Check LLM status
+# ------------------------------------------------------------------
+# Check LLM status & build provider list
+# ------------------------------------------------------------------
 llm_info = api.llm_status()
+
+PROVIDER_LABELS = {
+    "nvidia_nim": "NVIDIA NIM (Cloud)",
+    "vllm": "Local GPU (vLLM)",
+}
+
+available_providers: list[dict] = []
+if llm_info and llm_info.get("providers"):
+    for p in llm_info["providers"]:
+        label = PROVIDER_LABELS.get(p["name"], p["name"])
+        if p["available"]:
+            label += f"  --  {p['model']}"
+        else:
+            label += "  --  unavailable"
+        available_providers.append({
+            "name": p["name"],
+            "label": label,
+            "available": p["available"],
+            "supports_tools": p.get("supports_tools", False),
+            "model": p.get("model", "none"),
+        })
+
+# Status banner
 if llm_info and llm_info.get("available"):
-    provider = llm_info.get("provider", "unknown")
-    model = llm_info.get("model", "unknown")
-    st.success(f"Connected: {model} ({provider})")
+    active = [p["label"] for p in available_providers if p["available"]]
+    st.success(f"LLM available: {', '.join(active)}")
 else:
     st.warning(
-        "LLM not available. Add your `NVIDIA_API_KEY` to `.env` and restart:\n\n"
-        "```\nNVIDIA_API_KEY=nvapi-...\n```\n\n"
-        "`uvicorn api.main:app --reload`"
+        "No LLM providers available.\n\n"
+        "- **Cloud**: Add `NVIDIA_API_KEY` to `.env`\n"
+        "- **Local**: Install vLLM with a CUDA GPU"
     )
 
 st.divider()
@@ -38,9 +62,38 @@ st.divider()
 # Chat settings
 # ------------------------------------------------------------------
 with st.expander("Settings"):
+    # Provider selector
+    provider_options = ["auto"] + [p["name"] for p in available_providers]
+    provider_display = {
+        "auto": "Auto (best available)",
+        **{p["name"]: p["label"] for p in available_providers},
+    }
+    selected_provider = st.selectbox(
+        "LLM Provider",
+        options=provider_options,
+        format_func=lambda x: provider_display.get(x, x),
+        index=0,
+    )
+
+    # Show warning if selected provider is unavailable
+    if selected_provider != "auto":
+        info = next((p for p in available_providers if p["name"] == selected_provider), None)
+        if info and not info["available"]:
+            st.error(f"'{PROVIDER_LABELS.get(selected_provider, selected_provider)}' is not available.")
+        elif info and not info["supports_tools"]:
+            st.info("Tool calling is not supported with this provider and will be auto-disabled.")
+
     temperature = st.slider("Temperature", 0.0, 2.0, 1.0, 0.1)
     max_tokens = st.slider("Max Tokens", 256, 8192, 8192, 256)
-    enable_tools = st.toggle("Enable tool calling", value=True)
+
+    # Auto-disable tool toggle when provider doesn't support it
+    selected_info = next((p for p in available_providers if p["name"] == selected_provider), None)
+    tools_supported = selected_provider == "auto" or (selected_info and selected_info.get("supports_tools", False))
+    enable_tools = st.toggle(
+        "Enable tool calling",
+        value=tools_supported,
+        disabled=not tools_supported,
+    )
 
 # ------------------------------------------------------------------
 # Quick analysis buttons
@@ -54,6 +107,7 @@ with quick_col1:
             result = api.llm_analyze(
                 analysis_type="asset",
                 context=st.session_state.last_valuation,
+                provider=selected_provider,
             )
             if result:
                 st.session_state.setdefault("chat_messages", [])
@@ -68,6 +122,7 @@ with quick_col2:
             result = api.llm_analyze(
                 analysis_type="climate",
                 context=st.session_state.last_climate_risk,
+                provider=selected_provider,
             )
             if result:
                 st.session_state.setdefault("chat_messages", [])
@@ -131,8 +186,9 @@ if prompt := st.chat_input("Ask about renewable energy, climate risk, valuations
         )
         api_messages.append({"role": "system", "content": system_msg})
 
+    # Only send role + content to the API (strip tool_calls, etc.)
     recent = st.session_state.chat_messages[-10:]
-    api_messages.extend(recent)
+    api_messages.extend({"role": m["role"], "content": m["content"]} for m in recent)
 
     # Get response
     with st.chat_message("assistant"):
@@ -142,6 +198,7 @@ if prompt := st.chat_input("Ask about renewable energy, climate risk, valuations
                 max_tokens=max_tokens,
                 temperature=temperature,
                 enable_tools=enable_tools,
+                provider=selected_provider,
             )
 
         if result:
@@ -163,6 +220,6 @@ if prompt := st.chat_input("Ask about renewable energy, climate risk, valuations
                 "content": response,
                 "tool_calls": tool_calls,
             })
-            st.caption(f"Model: {result.get('model', 'unknown')} | Tokens: {result.get('completion_tokens', '?')}")
+            st.caption(f"Provider: {result.get('provider', '?')} | Model: {result.get('model', '?')} | Tokens: {result.get('completion_tokens', '?')}")
         else:
             st.error("Failed to get a response. Is the LLM running?")
