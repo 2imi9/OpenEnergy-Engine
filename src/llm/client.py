@@ -9,9 +9,11 @@ Provides local LLM inference using vLLM for:
 Author: Zim (Millennium Fellowship Research)
 """
 
+import json
+import re
 import logging
 from typing import Optional, Dict, Any, List, Union
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from .config import VLLMConfig
 
@@ -43,6 +45,16 @@ class GenerationResult:
     prompt_tokens: int
     completion_tokens: int
     finish_reason: str
+
+
+@dataclass
+class AgenticResult:
+    """Result from agentic chat with tool calling."""
+    text: str
+    prompt_tokens: int
+    completion_tokens: int
+    finish_reason: str
+    tool_calls: List[Dict[str, Any]] = field(default_factory=list)
 
 
 class VLLMClient:
@@ -84,6 +96,8 @@ class VLLMClient:
         self.config = config or VLLMConfig()
         self._llm: Optional[LLM] = None
         self._loaded = False
+        self.provider = "vllm"
+        self.model = self.config.model_id
 
     def _ensure_loaded(self):
         """Lazy load the model on first use."""
@@ -309,6 +323,116 @@ Provide a clear, concise answer based on the context."""
         result = self.chat(messages)
         return result.text
 
+    def agentic_chat(
+        self,
+        messages: List[ChatMessage],
+        tool_handlers,
+        tools: List[dict],
+        max_tokens: Optional[int] = None,
+        temperature: Optional[float] = None,
+        max_rounds: int = 5,
+    ) -> AgenticResult:
+        """Chat with tool calling loop (Qwen3-style function calling).
+
+        The model generates ``<tool_call>...</tool_call>`` blocks which are
+        parsed, executed via *tool_handlers*, and fed back as tool-role
+        messages until the model produces a final text answer.
+        """
+        self._ensure_loaded()
+        tokenizer = self._llm.get_tokenizer()
+
+        # Build initial message list
+        formatted: List[Dict[str, Any]] = []
+        if not any(m.role == "system" for m in messages):
+            sys_content = (
+                self.config.system_prompt
+                + "\n\nYou have tools for renewable energy detection, climate risk "
+                "assessment, asset valuation, and EIA data queries. Use them when "
+                "the user's question needs real data or calculations."
+            )
+            formatted.append({"role": "system", "content": sys_content})
+
+        for msg in messages:
+            formatted.append({"role": msg.role, "content": msg.content})
+
+        tool_calls_log: List[Dict[str, Any]] = []
+        total_prompt = 0
+        total_completion = 0
+
+        for _ in range(max_rounds):
+            # Apply chat template — Qwen3 accepts a `tools` kwarg
+            try:
+                prompt = tokenizer.apply_chat_template(
+                    formatted,
+                    tools=tools,
+                    tokenize=False,
+                    add_generation_prompt=True,
+                )
+            except Exception:
+                # Fallback for models whose template ignores tools
+                prompt = tokenizer.apply_chat_template(
+                    formatted,
+                    tokenize=False,
+                    add_generation_prompt=True,
+                )
+
+            result = self.generate(prompt, max_tokens=max_tokens, temperature=temperature)
+            total_prompt += result.prompt_tokens
+            total_completion += result.completion_tokens
+            text = result.text.strip()
+
+            # Parse <tool_call>…</tool_call> blocks
+            tc_matches = re.findall(
+                r"<tool_call>\s*(\{.*?\})\s*</tool_call>",
+                text,
+                re.DOTALL,
+            )
+
+            if not tc_matches:
+                # No tool calls — clean up special tokens and return
+                clean = re.sub(r"<\|.*?\|>", "", text).strip()
+                return AgenticResult(
+                    text=clean,
+                    prompt_tokens=total_prompt,
+                    completion_tokens=total_completion,
+                    finish_reason=result.finish_reason,
+                    tool_calls=tool_calls_log,
+                )
+
+            # Append assistant turn (raw, including tool_call tags)
+            formatted.append({"role": "assistant", "content": text})
+
+            for tc_json in tc_matches:
+                try:
+                    tc_data = json.loads(tc_json)
+                    tool_name = tc_data.get("name", "")
+                    tool_args = tc_data.get("arguments", {})
+                except json.JSONDecodeError:
+                    continue
+
+                logger.info(f"Tool call (vLLM): {tool_name}({tool_args})")
+                tool_result = tool_handlers.execute_tool(tool_name, tool_args)
+                tool_calls_log.append({
+                    "tool": tool_name,
+                    "arguments": tool_args,
+                    "result": tool_result,
+                })
+
+                # Feed tool result back
+                formatted.append({
+                    "role": "tool",
+                    "name": tool_name,
+                    "content": json.dumps(tool_result, default=str),
+                })
+
+        return AgenticResult(
+            text="[Max tool rounds reached]",
+            prompt_tokens=total_prompt,
+            completion_tokens=total_completion,
+            finish_reason="max_rounds",
+            tool_calls=tool_calls_log,
+        )
+
     def is_loaded(self) -> bool:
         """Check if model is loaded."""
         return self._loaded
@@ -330,6 +454,8 @@ class MockVLLMClient:
 
     def __init__(self, config: Optional[VLLMConfig] = None):
         self.config = config or VLLMConfig()
+        self.provider = "vllm_mock"
+        self.model = self.config.model_id
         logger.info("Using MockVLLMClient (vLLM not available)")
 
     def generate(self, prompt: str, **kwargs) -> GenerationResult:

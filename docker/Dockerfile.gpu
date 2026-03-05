@@ -7,21 +7,23 @@ RUN apt-get update && \
     apt-get install -y --no-install-recommends \
         python3.11 python3.11-venv python3.11-dev python3-pip curl gcc && \
     ln -sf /usr/bin/python3.11 /usr/bin/python && \
-    ln -sf /usr/bin/pip3 /usr/bin/pip && \
     rm -rf /var/lib/apt/lists/*
 
-# Install deps with CUDA-enabled torch + vLLM
+# Install deps with CUDA-enabled torch + vLLM (use python -m pip to match python 3.11)
 COPY requirements.txt requirements-api.txt ./
-RUN pip install --no-cache-dir -r requirements.txt -r requirements-api.txt && \
-    pip install --no-cache-dir vllm
+RUN python -m pip install --no-cache-dir --upgrade pip && \
+    python -m pip install --no-cache-dir -r requirements.txt -r requirements-api.txt && \
+    python -m pip install --no-cache-dir vllm
 
 # Copy application code
 COPY src/ src/
 COPY api/ api/
 
 ENV PYTHONPATH=/app
-# Pre-download model on build (optional, comment out to download at runtime)
-# RUN python -c "from huggingface_hub import snapshot_download; snapshot_download('Qwen/Qwen3-8B')"
+
+# Pre-download model at build time so first request doesn't stall
+ARG VLLM_MODEL=Qwen/Qwen3-8B
+RUN python -c "from huggingface_hub import snapshot_download; snapshot_download('${VLLM_MODEL}')"
 
 EXPOSE 8000
 

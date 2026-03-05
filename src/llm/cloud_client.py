@@ -22,7 +22,7 @@ except ImportError:
     HAS_OPENAI = False
     logger.warning("openai not installed. pip install openai")
 
-from .client import ChatMessage, GenerationResult
+from .client import ChatMessage, GenerationResult, AgenticResult
 
 
 @dataclass
@@ -315,16 +315,6 @@ Provide a clear, concise answer based on the context."""
 
     def unload(self):
         pass
-
-
-@dataclass
-class AgenticResult:
-    """Result from agentic chat with tool calling."""
-    text: str
-    prompt_tokens: int
-    completion_tokens: int
-    finish_reason: str
-    tool_calls: List[Dict[str, Any]] = field(default_factory=list)
 
 
 def _format_dict(d: Dict[str, Any]) -> str:
